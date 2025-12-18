@@ -1,18 +1,20 @@
 # Eurostar SNAP Scraper
 
-Monitors Eurostar SNAP for available tickets between London and Amsterdam, sends WhatsApp notifications via CallMeBot.
+Monitors Eurostar SNAP for available tickets between London and Amsterdam, sends WhatsApp notifications via Twilio.
 
 ## Setup
 
-### 1. Get CallMeBot API Key
-1. Add `+34 644 71 81 99` to your WhatsApp contacts
-2. Send `I allow callmebot to send me messages` to that number
-3. Save the API key you receive
+### 1. Set up Twilio WhatsApp Sandbox
+1. Create a Twilio account at https://www.twilio.com/try-twilio
+2. Go to Console → Messaging → Try it out → Send a WhatsApp message
+3. Send the join code from your phone to the sandbox number
 
 ### 2. Configure GitHub Secrets
-Add these secrets to your GitHub repo (Settings → Secrets → Actions):
-- `CALLMEBOT_PHONE`: Your phone number with country code (e.g., `447123456789`)
-- `CALLMEBOT_APIKEY`: The API key from CallMeBot
+Add these secrets to your GitHub repo (Settings → Secrets and variables → Actions → Repository secrets):
+- `TWILIO_ACCOUNT_SID`: Your Twilio Account SID
+- `TWILIO_AUTH_TOKEN`: Your Twilio Auth Token
+- `TWILIO_WHATSAPP_FROM`: Sandbox number (e.g., `+14155238886`)
+- `YOUR_PHONE_NUMBER`: Your WhatsApp number (e.g., `+447123456789`)
 
 ### 3. Enable GitHub Actions
 The scraper runs automatically every 10 minutes via GitHub Actions.
@@ -21,8 +23,11 @@ The scraper runs automatically every 10 minutes via GitHub Actions.
 
 ```bash
 pip install -r requirements.txt
-export CALLMEBOT_PHONE="your_phone"
-export CALLMEBOT_APIKEY="your_apikey"
+playwright install chromium
+export TWILIO_ACCOUNT_SID="your_sid"
+export TWILIO_AUTH_TOKEN="your_token"
+export TWILIO_WHATSAPP_FROM="+14155238886"
+export YOUR_PHONE_NUMBER="+447123456789"
 python scraper.py
 ```
 

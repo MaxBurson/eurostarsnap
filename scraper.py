@@ -2,13 +2,12 @@
 """
 Eurostar SNAP Scraper
 Monitors for available tickets between London and Amsterdam.
-Sends WhatsApp notifications via CallMeBot when tickets are found.
+Sends WhatsApp notifications via Twilio when tickets are found.
 """
 
 import os
 import re
-import requests
-import urllib.parse
+from twilio.rest import Client
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 # Configuration
@@ -18,29 +17,34 @@ ROUTES = [
     {"from": "Amsterdam", "to": "London"},
 ]
 
-# CallMeBot settings from environment
-CALLMEBOT_PHONE = os.environ.get("CALLMEBOT_PHONE", "")
-CALLMEBOT_APIKEY = os.environ.get("CALLMEBOT_APIKEY", "")
+# Twilio settings from environment
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
+TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")  # Sandbox number
+YOUR_PHONE_NUMBER = os.environ.get("YOUR_PHONE_NUMBER", "")
 
 
 def send_whatsapp(message: str) -> bool:
-    """Send WhatsApp message via CallMeBot API."""
-    if not CALLMEBOT_PHONE or not CALLMEBOT_APIKEY:
-        print("CallMeBot credentials not configured. Message:")
+    """Send WhatsApp message via Twilio API."""
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not YOUR_PHONE_NUMBER:
+        print("Twilio credentials not configured. Message:")
         print(message)
         return False
 
-    encoded_message = urllib.parse.quote(message)
-    url = f"https://api.callmebot.com/whatsapp.php?phone={CALLMEBOT_PHONE}&text={encoded_message}&apikey={CALLMEBOT_APIKEY}"
-    
     try:
-        response = requests.get(url, timeout=30)
-        if response.status_code == 200:
-            print(f"WhatsApp message sent successfully")
-            return True
-        else:
-            print(f"Failed to send WhatsApp: {response.status_code} - {response.text}")
-            return False
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        
+        # Ensure phone numbers have whatsapp: prefix
+        to_number = YOUR_PHONE_NUMBER if YOUR_PHONE_NUMBER.startswith("whatsapp:") else f"whatsapp:{YOUR_PHONE_NUMBER}"
+        from_number = TWILIO_WHATSAPP_FROM if TWILIO_WHATSAPP_FROM.startswith("whatsapp:") else f"whatsapp:{TWILIO_WHATSAPP_FROM}"
+        
+        msg = client.messages.create(
+            body=message,
+            from_=from_number,
+            to=to_number
+        )
+        print(f"WhatsApp message sent successfully. SID: {msg.sid}")
+        return True
     except Exception as e:
         print(f"Error sending WhatsApp: {e}")
         return False

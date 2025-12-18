@@ -28,8 +28,10 @@ jobs:
 
       - name: Run scraper
         env:
-          CALLMEBOT_PHONE: ${{ secrets.CALLMEBOT_PHONE }}
-          CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
+          YOUR_PHONE_NUMBER: ${{ secrets.YOUR_PHONE_NUMBER }}
         run: python scraper.py
 
       - name: Upload screenshot artifact
