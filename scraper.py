@@ -80,9 +80,23 @@ def scrape_snap_availability() -> dict:
             except:
                 pass
             
-            # Get page text for analysis
+            # Click the Search button to trigger the search
+            print("Clicking Search button...")
+            try:
+                search_btn = page.locator("button:has-text('Search')").first
+                search_btn.click(timeout=10000)
+                print("Search button clicked, waiting for results...")
+                page.wait_for_timeout(5000)  # Wait for results to load
+            except Exception as e:
+                print(f"Could not click search button: {e}")
+            
+            # Take screenshot after search
+            page.screenshot(path="snap_screenshot.png")
+            print("Screenshot saved to snap_screenshot.png")
+            
+            # Get page text for analysis AFTER search
             page_text = page.inner_text("body").lower()
-            print(f"Page text sample: {page_text[:1000]}...")
+            print(f"Page text after search: {page_text[:1500]}...")
             
             # Check for "sold out" / "no availability" messages
             sold_out_patterns = [
@@ -97,11 +111,6 @@ def scrape_snap_availability() -> dict:
             
             is_sold_out = any(pattern in page_text for pattern in sold_out_patterns)
             
-            # Check if London-Amsterdam route is mentioned/available
-            has_london = "london" in page_text
-            has_amsterdam = "amsterdam" in page_text
-            
-            print(f"Has London: {has_london}, Has Amsterdam: {has_amsterdam}")
             print(f"Is sold out: {is_sold_out}")
             
             if is_sold_out:
@@ -115,7 +124,10 @@ def scrape_snap_availability() -> dict:
                     "book now",
                     "add to basket",
                     "from €",
-                    "from £"
+                    "from £",
+                    "morning",
+                    "afternoon",
+                    "evening"
                 ]
                 
                 has_availability = any(indicator in page_text for indicator in availability_indicators)
