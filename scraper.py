@@ -12,9 +12,18 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 
 # Configuration
 SNAP_URL = "https://snap.eurostar.com/uk-en"
+# Direct search URLs with pre-selected routes
 ROUTES = [
-    {"from": "London", "to": "Amsterdam"},
-    {"from": "Amsterdam", "to": "London"},
+    {
+        "from": "London", 
+        "to": "Amsterdam",
+        "url": "https://snap.eurostar.com/uk-en?origin=7015400&destination=8400058"  # London St Pancras to Amsterdam
+    },
+    {
+        "from": "Amsterdam", 
+        "to": "London",
+        "url": "https://snap.eurostar.com/uk-en?origin=8400058&destination=7015400"  # Amsterdam to London St Pancras
+    },
 ]
 
 # Twilio settings from environment
@@ -84,43 +93,25 @@ def scrape_snap_availability() -> dict:
             for route in ROUTES:
                 origin = route["from"]
                 destination = route["to"]
+                route_url = route["url"]
+                
                 print(f"\n{'='*40}")
                 print(f"Checking route: {origin} → {destination}")
+                print(f"URL: {route_url}")
                 print(f"{'='*40}")
                 
-                # Reload page for each route to reset state
-                if route != ROUTES[0]:
-                    page.goto(SNAP_URL, wait_until="networkidle", timeout=60000)
-                    page.wait_for_timeout(2000)
+                # Load the route-specific URL directly
+                page.goto(route_url, wait_until="networkidle", timeout=60000)
+                page.wait_for_timeout(3000)
                 
-                # Click on origin field and select station
+                # Accept cookies if they appear again
                 try:
-                    # Click the origin input area
-                    origin_field = page.locator("input, [role='combobox']").first
-                    origin_field.click(timeout=5000)
-                    page.wait_for_timeout(500)
-                    
-                    # Type the origin
-                    page.keyboard.type(origin, delay=50)
-                    page.wait_for_timeout(1000)
-                    
-                    # Click on the dropdown option
-                    page.locator(f"text='{origin}'").first.click(timeout=5000)
-                    page.wait_for_timeout(500)
-                except Exception as e:
-                    print(f"Origin selection: {e}")
-                
-                # Click on destination field and select station
-                try:
-                    # The destination field should now be active or we click it
-                    page.keyboard.type(destination, delay=50)
-                    page.wait_for_timeout(1000)
-                    
-                    # Click on the dropdown option
-                    page.locator(f"text='{destination}'").first.click(timeout=5000)
-                    page.wait_for_timeout(500)
-                except Exception as e:
-                    print(f"Destination selection: {e}")
+                    cookie_btn = page.locator("button:has-text('Accept'), #onetrust-accept-btn-handler")
+                    if cookie_btn.count() > 0:
+                        cookie_btn.first.click()
+                        page.wait_for_timeout(1000)
+                except:
+                    pass
                 
                 # Click the Search button
                 print("Clicking Search button...")
@@ -128,7 +119,7 @@ def scrape_snap_availability() -> dict:
                     search_btn = page.locator("button:has-text('Search')").first
                     search_btn.click(timeout=10000)
                     print("Search button clicked, waiting for results...")
-                    page.wait_for_timeout(3000)
+                    page.wait_for_timeout(5000)
                 except Exception as e:
                     print(f"Could not click search button: {e}")
                 
