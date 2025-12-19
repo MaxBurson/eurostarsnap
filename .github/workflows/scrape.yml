@@ -26,6 +26,14 @@ jobs:
           playwright install chromium
           playwright install-deps chromium
 
+      - name: Restore previous state
+        uses: actions/cache/restore@v4
+        with:
+          path: previous_state.json
+          key: snap-state-${{ github.run_id }}
+          restore-keys: |
+            snap-state-
+
       - name: Run scraper
         env:
           TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
@@ -33,6 +41,13 @@ jobs:
           TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
           YOUR_PHONE_NUMBER: ${{ secrets.YOUR_PHONE_NUMBER }}
         run: python scraper.py
+
+      - name: Save current state
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: previous_state.json
+          key: snap-state-${{ github.run_id }}
 
       - name: Upload screenshot artifact
         uses: actions/upload-artifact@v4

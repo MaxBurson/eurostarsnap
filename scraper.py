@@ -7,8 +7,12 @@ Sends WhatsApp notifications via Twilio when tickets are found.
 
 import os
 import re
+import json
 from twilio.rest import Client
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+
+# State file to track previous results
+STATE_FILE = "previous_state.json"
 
 # Configuration
 SNAP_URL = "https://snap.eurostar.com/uk-en"
@@ -218,56 +222,147 @@ def scrape_snap_availability() -> dict:
     return results
 
 
+def load_previous_state() -> dict:
+    """Load the previous state from file."""
+    try:
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Could not load previous state: {e}")
+    return {}
+
+
+def save_current_state(state: dict):
+    """Save the current state to file."""
+    try:
+        with open(STATE_FILE, 'w') as f:
+            json.dump(state, f, indent=2)
+        print(f"State saved to {STATE_FILE}")
+    except Exception as e:
+        print(f"Could not save state: {e}")
+
+
+def results_to_state(results: dict) -> dict:
+    """Convert scrape results to a comparable state dict."""
+    state = {}
+    
+    # Store available routes with their dates
+    for avail in results.get("available", []):
+        route = avail["route"]
+        dates = avail.get("dates", [])
+        state[route] = {"status": "available", "dates": sorted(dates)}
+    
+    # Store sold out routes
+    for route in results.get("sold_out", []):
+        state[route] = {"status": "sold_out", "dates": []}
+    
+    return state
+
+
+def compare_states(previous: dict, current: dict) -> tuple[bool, str]:
+    """Compare previous and current states. Returns (has_changed, change_description)."""
+    if not previous:
+        # First run - no previous state
+        return True, "first_run"
+    
+    if previous == current:
+        return False, "no_change"
+    
+    # Build description of changes
+    changes = []
+    all_routes = set(previous.keys()) | set(current.keys())
+    
+    for route in all_routes:
+        prev_data = previous.get(route, {"status": "unknown", "dates": []})
+        curr_data = current.get(route, {"status": "unknown", "dates": []})
+        
+        prev_status = prev_data.get("status", "unknown")
+        curr_status = curr_data.get("status", "unknown")
+        prev_dates = set(prev_data.get("dates", []))
+        curr_dates = set(curr_data.get("dates", []))
+        
+        if prev_status != curr_status:
+            if curr_status == "available":
+                changes.append(f"🎉 {route}: Now AVAILABLE!")
+            elif curr_status == "sold_out":
+                changes.append(f"😢 {route}: Now SOLD OUT")
+        elif prev_dates != curr_dates:
+            new_dates = curr_dates - prev_dates
+            removed_dates = prev_dates - curr_dates
+            if new_dates:
+                changes.append(f"➕ {route}: New dates: {', '.join(sorted(new_dates))}")
+            if removed_dates:
+                changes.append(f"➖ {route}: Dates gone: {', '.join(sorted(removed_dates))}")
+    
+    return True, "\n".join(changes)
+
+
 def main():
     print("=" * 50)
     print("Eurostar SNAP Availability Checker")
     print("=" * 50)
     
+    # Load previous state
+    previous_state = load_previous_state()
+    print(f"Previous state: {previous_state}")
+    
+    # Scrape current availability
     results = scrape_snap_availability()
     
-    # Always send a message with the results (for testing)
-    message = "Maxie, here's your SNAP update\n"
-    message += "=" * 25 + "\n\n"
+    # Convert to comparable state
+    current_state = results_to_state(results)
+    print(f"Current state: {current_state}")
     
-    # Report available routes
-    if results["available"]:
-        message += "✅ AVAILABLE:\n"
-        for avail in results["available"]:
-            message += f"\n• {avail['route']}"
-            if avail.get("dates"):
-                dates_str = ", ".join(avail["dates"][:10])  # Show up to 10 dates
-                message += f"\n  Dates: {dates_str}"
-        message += "\n\n"
+    # Compare states
+    has_changed, change_description = compare_states(previous_state, current_state)
+    print(f"Has changed: {has_changed}")
+    print(f"Change description: {change_description}")
     
-    # Report sold out routes
-    if results["sold_out"]:
-        message += "❌ SOLD OUT:\n"
-        for route in results["sold_out"]:
-            message += f"• {route}\n"
-        message += "\n"
+    # Save current state for next run
+    save_current_state(current_state)
     
-    # If nothing found at all
-    if not results["available"] and not results["sold_out"]:
-        message += "⚠️ Could not determine availability\n\n"
+    # Only send message if state has changed
+    if has_changed:
+        if change_description == "first_run":
+            message = "🚄 EUROSTAR SNAP - Initial Status\n"
+            message += "=" * 25 + "\n\n"
+        else:
+            message = "🚨 EUROSTAR SNAP - CHANGE DETECTED!\n"
+            message += "=" * 25 + "\n\n"
+            message += f"{change_description}\n\n"
+        
+        # Current status
+        message += "📊 Current Status:\n"
+        
+        if results["available"]:
+            for avail in results["available"]:
+                message += f"\n✅ {avail['route']}"
+                if avail.get("dates"):
+                    dates_str = ", ".join(avail["dates"][:10])
+                    message += f"\n   Dates: {dates_str}"
+        
+        if results["sold_out"]:
+            for route in results["sold_out"]:
+                message += f"\n❌ {route}: SOLD OUT"
+        
+        if not results["available"] and not results["sold_out"]:
+            message += "\n⚠️ Could not determine availability"
+        
+        message += f"\n\n🔗 {SNAP_URL}"
+        
+        print("\n" + "=" * 50)
+        print("SENDING NOTIFICATION - State changed!")
+        print(message)
+        print("=" * 50)
+        
+        send_whatsapp(message)
+    else:
+        print("\n" + "=" * 50)
+        print("No change detected - NOT sending notification")
+        print("=" * 50)
     
-    # Report errors if any
-    if results["errors"]:
-        message += "⚠️ Errors:\n"
-        for error in results["errors"]:
-            message += f"• {error}\n"
-        message += "\n"
-    
-    message += f"🔗 {SNAP_URL}"
-    
-    print("\n" + "=" * 50)
-    print("RESULTS:")
-    print(message)
-    print("=" * 50)
-    
-    # Always send WhatsApp for testing
-    send_whatsapp(message)
-    
-    return len(results["available"]) > 0
+    return has_changed
 
 
 if __name__ == "__main__":
