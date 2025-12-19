@@ -138,28 +138,44 @@ def scrape_snap_availability() -> dict:
                         # Click on the date button (shows something like "Sat 20 Dec")
                         date_btn = page.locator("button:has-text('Dec'), button:has-text('Jan')").first
                         date_btn.click(timeout=5000)
-                        page.wait_for_timeout(1500)
+                        page.wait_for_timeout(2000)
                         
                         # Take screenshot of calendar
                         page.screenshot(path=f"calendar_{origin.lower()}_{destination.lower()}.png")
                         print("Calendar opened, extracting dates...")
                         
-                        # Get all buttons in the calendar
-                        all_buttons = page.locator("button").all()
+                        # Get the calendar HTML to understand structure
+                        calendar_html = page.content()
                         
-                        for btn in all_buttons:
+                        # Look for day cells/buttons - try multiple approaches
+                        # Approach 1: Look for elements that are just numbers
+                        day_elements = page.locator("button, td, div").all()
+                        
+                        checked_count = 0
+                        for elem in day_elements:
                             try:
-                                text = btn.inner_text().strip()
+                                text = elem.inner_text().strip()
                                 # Check if it's a day number (1-31)
                                 if text.isdigit() and 1 <= int(text) <= 31:
-                                    # Check if button is disabled (grey) or enabled (black/available)
-                                    is_disabled = btn.is_disabled()
-                                    classes = btn.get_attribute("class") or ""
-                                    aria_disabled = btn.get_attribute("aria-disabled")
+                                    checked_count += 1
+                                    # Get element info for debugging
+                                    classes = elem.get_attribute("class") or ""
+                                    aria_disabled = elem.get_attribute("aria-disabled")
+                                    is_disabled = False
+                                    try:
+                                        is_disabled = elem.is_disabled()
+                                    except:
+                                        pass
                                     
+                                    # Log first few for debugging
+                                    if checked_count <= 5:
+                                        print(f"  Day {text}: classes='{classes[:50]}', disabled={is_disabled}, aria-disabled={aria_disabled}")
+                                    
+                                    # Check if this date is available (not grey/disabled)
                                     is_grey = (
                                         is_disabled or
                                         "disabled" in classes.lower() or
+                                        "unavailable" in classes.lower() or
                                         aria_disabled == "true"
                                     )
                                     
@@ -167,6 +183,8 @@ def scrape_snap_availability() -> dict:
                                         available_dates.append(int(text))
                             except:
                                 pass
+                        
+                        print(f"Checked {checked_count} day elements")
                         
                         # Remove duplicates and sort
                         available_dates = sorted(list(set(available_dates)))
