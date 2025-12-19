@@ -151,23 +151,48 @@ def scrape_snap_availability() -> dict:
                     available_dates = []
                     try:
                         # Click on date field to open calendar
-                        date_field = page.locator("[class*='date'], button:has-text('Dec'), button:has-text('Jan')").first
-                        date_field.click(timeout=5000)
-                        page.wait_for_timeout(1000)
+                        date_field = page.locator("button:has-text('Dec'), button:has-text('Jan'), [class*='date-picker'], input[type='date']").first
+                        date_field.click(timeout=10000)
+                        page.wait_for_timeout(2000)
                         
-                        # Look for bold dates (available) in the calendar
-                        # Bold dates typically have font-weight: bold or a specific class
-                        bold_dates = page.locator("button[class*='bold'], [style*='font-weight: bold'], [style*='font-weight:bold'], [class*='available'], [class*='active']:not([class*='disabled'])")
+                        # Take screenshot of calendar
+                        page.screenshot(path=f"calendar_{origin.lower()}_{destination.lower()}.png")
                         
-                        for i in range(bold_dates.count()):
+                        # Find all day buttons in the calendar
+                        # Available dates are typically NOT disabled and have darker text color
+                        # We look for buttons that contain just numbers (1-31)
+                        all_days = page.locator("button").all()
+                        
+                        for day_btn in all_days:
                             try:
-                                date_text = bold_dates.nth(i).inner_text()
-                                if date_text.strip().isdigit():
-                                    available_dates.append(date_text.strip())
+                                text = day_btn.inner_text().strip()
+                                # Check if it's a day number (1-31)
+                                if text.isdigit() and 1 <= int(text) <= 31:
+                                    # Check if the button is NOT disabled
+                                    is_disabled = day_btn.get_attribute("disabled") is not None
+                                    classes = day_btn.get_attribute("class") or ""
+                                    aria_disabled = day_btn.get_attribute("aria-disabled")
+                                    
+                                    # Check for disabled indicators in class names
+                                    is_grey = (
+                                        "disabled" in classes.lower() or
+                                        "unavailable" in classes.lower() or
+                                        "inactive" in classes.lower() or
+                                        is_disabled or
+                                        aria_disabled == "true"
+                                    )
+                                    
+                                    if not is_grey:
+                                        # This date is available (black text)
+                                        available_dates.append(text)
+                                        print(f"  Available date found: {text}")
                             except:
                                 pass
                         
+                        # Remove duplicates and sort
+                        available_dates = sorted(list(set(available_dates)), key=lambda x: int(x))
                         print(f"Found {len(available_dates)} available dates: {available_dates}")
+                        
                     except Exception as e:
                         print(f"Could not extract dates: {e}")
                     
