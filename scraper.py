@@ -133,15 +133,20 @@ def scrape_snap_availability() -> dict:
                 page_text = page.inner_text("body").lower()
                 print(f"Page text sample: {page_text[:500]}...")
                 
-                # Simple check: if "sold out" appears, no availability. Otherwise, there IS availability!
-                is_sold_out = "sold out" in page_text or "sorry this route" in page_text
+                # Check for the specific "Sorry this route is currently sold out" message
+                # This appears when the ENTIRE route has no availability at all
+                route_sold_out = "sorry this route is currently sold out" in page_text
                 
-                print(f"Contains 'sold out': {is_sold_out}")
+                # If we see "train results" or date options, there IS availability on some dates
+                has_train_results = "train results" in page_text or "edit search" in page_text
                 
-                if is_sold_out:
+                print(f"Route completely sold out: {route_sold_out}")
+                print(f"Has train results page: {has_train_results}")
+                
+                if route_sold_out and not has_train_results:
                     print(f"❌ {origin} → {destination}: SOLD OUT")
                     results["sold_out"].append(f"{origin} → {destination}")
-                else:
+                elif has_train_results:
                     # Try to get available dates from the calendar
                     available_dates = []
                     try:
@@ -171,6 +176,9 @@ def scrape_snap_availability() -> dict:
                         "route": f"{origin} → {destination}",
                         "dates": available_dates if available_dates else ["dates available - check website"]
                     })
+                else:
+                    print(f"⚠️ {origin} → {destination}: Could not determine status")
+                    results["errors"].append(f"Could not determine status for {origin} → {destination}")
             
             # Save final screenshot
             page.screenshot(path="snap_screenshot.png")
