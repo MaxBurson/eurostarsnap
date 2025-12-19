@@ -13,16 +13,17 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 # Configuration
 SNAP_URL = "https://snap.eurostar.com/uk-en"
 # Direct search URLs with pre-selected routes
+# Station codes: London=7015400, Amsterdam=8400058, Paris Gare du Nord=8727100
 ROUTES = [
     {
-        "from": "London", 
+        "from": "Paris", 
         "to": "Amsterdam",
-        "url": "https://snap.eurostar.com/uk-en?origin=7015400&destination=8400058"  # London St Pancras to Amsterdam
+        "url": "https://snap.eurostar.com/uk-en?origin=8727100&destination=8400058"  # Paris Gare du Nord to Amsterdam
     },
     {
         "from": "Amsterdam", 
-        "to": "London",
-        "url": "https://snap.eurostar.com/uk-en?origin=8400058&destination=7015400"  # Amsterdam to London St Pancras
+        "to": "Paris",
+        "url": "https://snap.eurostar.com/uk-en?origin=8400058&destination=8727100"  # Amsterdam to Paris Gare du Nord
     },
 ]
 
@@ -195,7 +196,7 @@ def main():
     results = scrape_snap_availability()
     
     # Always send a message with the results (for testing)
-    message = "🚄 EUROSTAR SNAP STATUS\n"
+    message = "Maxie, here's your SNAP update\n"
     message += "=" * 25 + "\n\n"
     
     # Report available routes
