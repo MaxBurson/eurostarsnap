@@ -150,47 +150,63 @@ def scrape_snap_availability() -> dict:
                     # Try to get available dates from the calendar
                     available_dates = []
                     try:
-                        # Click on date field to open calendar
-                        date_field = page.locator("button:has-text('Dec'), button:has-text('Jan'), [class*='date-picker'], input[type='date']").first
-                        date_field.click(timeout=10000)
-                        page.wait_for_timeout(2000)
+                        # Try multiple selectors to click the date field and open calendar
+                        date_selectors = [
+                            "text=Sat 20 Dec",
+                            "text=Dec",
+                            "[class*='date']",
+                            "button >> text=/\\d+ Dec/",
+                            "[aria-label*='date']",
+                        ]
                         
-                        # Take screenshot of calendar
-                        page.screenshot(path=f"calendar_{origin.lower()}_{destination.lower()}.png")
-                        
-                        # Find all day buttons in the calendar
-                        # Available dates are typically NOT disabled and have darker text color
-                        # We look for buttons that contain just numbers (1-31)
-                        all_days = page.locator("button").all()
-                        
-                        for day_btn in all_days:
+                        calendar_opened = False
+                        for selector in date_selectors:
                             try:
-                                text = day_btn.inner_text().strip()
-                                # Check if it's a day number (1-31)
-                                if text.isdigit() and 1 <= int(text) <= 31:
-                                    # Check if the button is NOT disabled
-                                    is_disabled = day_btn.get_attribute("disabled") is not None
-                                    classes = day_btn.get_attribute("class") or ""
-                                    aria_disabled = day_btn.get_attribute("aria-disabled")
-                                    
-                                    # Check for disabled indicators in class names
-                                    is_grey = (
-                                        "disabled" in classes.lower() or
-                                        "unavailable" in classes.lower() or
-                                        "inactive" in classes.lower() or
-                                        is_disabled or
-                                        aria_disabled == "true"
-                                    )
-                                    
-                                    if not is_grey:
-                                        # This date is available (black text)
-                                        available_dates.append(text)
-                                        print(f"  Available date found: {text}")
+                                date_field = page.locator(selector).first
+                                if date_field.count() > 0:
+                                    date_field.click(timeout=3000)
+                                    page.wait_for_timeout(1500)
+                                    # Check if calendar appeared
+                                    if page.locator("text=December 2025").count() > 0 or page.locator("text=January 2026").count() > 0:
+                                        calendar_opened = True
+                                        print(f"Calendar opened with selector: {selector}")
+                                        break
                             except:
-                                pass
+                                continue
                         
-                        # Remove duplicates and sort
-                        available_dates = sorted(list(set(available_dates)), key=lambda x: int(x))
+                        if calendar_opened:
+                            # Take screenshot of calendar
+                            page.screenshot(path=f"calendar_{origin.lower()}_{destination.lower()}.png")
+                            
+                            # Get all buttons and check which are available
+                            all_buttons = page.locator("button").all()
+                            
+                            for btn in all_buttons:
+                                try:
+                                    text = btn.inner_text().strip()
+                                    if text.isdigit() and 1 <= int(text) <= 31:
+                                        # Check various disabled indicators
+                                        is_disabled = btn.is_disabled()
+                                        classes = btn.get_attribute("class") or ""
+                                        aria_disabled = btn.get_attribute("aria-disabled")
+                                        tabindex = btn.get_attribute("tabindex")
+                                        
+                                        is_grey = (
+                                            is_disabled or
+                                            "disabled" in classes.lower() or
+                                            "unavailable" in classes.lower() or
+                                            aria_disabled == "true" or
+                                            tabindex == "-1"
+                                        )
+                                        
+                                        if not is_grey:
+                                            available_dates.append(text)
+                                except:
+                                    pass
+                            
+                            # Remove duplicates and sort
+                            available_dates = sorted(list(set(available_dates)), key=lambda x: int(x))
+                        
                         print(f"Found {len(available_dates)} available dates: {available_dates}")
                         
                     except Exception as e:
