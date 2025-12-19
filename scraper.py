@@ -80,83 +80,53 @@ def scrape_snap_availability() -> dict:
             except:
                 pass
             
-            for route in ROUTES:
-                try:
-                    print(f"\nChecking route: {route['from']} → {route['to']}")
-                    
-                    # Select origin station
-                    origin_input = page.locator("[data-testid='origin-input'], input[placeholder*='From'], input[aria-label*='From'], input[aria-label*='origin']").first
-                    if origin_input.count() > 0:
-                        origin_input.click()
-                        page.wait_for_timeout(500)
-                        origin_input.fill(route['from'])
-                        page.wait_for_timeout(1000)
-                        # Click on dropdown option
-                        page.locator(f"text={route['from']}").first.click()
-                        page.wait_for_timeout(500)
-                    
-                    # Select destination station
-                    dest_input = page.locator("[data-testid='destination-input'], input[placeholder*='To'], input[aria-label*='To'], input[aria-label*='destination']").first
-                    if dest_input.count() > 0:
-                        dest_input.click()
-                        page.wait_for_timeout(500)
-                        dest_input.fill(route['to'])
-                        page.wait_for_timeout(1000)
-                        page.locator(f"text={route['to']}").first.click()
-                        page.wait_for_timeout(500)
-                    
-                    # Click search button
-                    search_btn = page.locator("button:has-text('Search'), button[type='submit']").first
-                    if search_btn.count() > 0:
-                        search_btn.click()
-                        page.wait_for_timeout(3000)
-                    
-                    # Get page text for analysis
-                    page_text = page.inner_text("body").lower()
-                    print(f"  Page text sample: {page_text[:500]}...")
-                    
-                    # Check for "sold out" / "no availability" messages - this is the PRIMARY check
-                    sold_out_patterns = [
-                        "sold out",
-                        "currently sold out",
-                        "no tickets available",
-                        "no availability",
-                        "no snap tickets",
-                        "check back later",
-                        "sorry this route is currently sold out"
-                    ]
-                    
-                    is_sold_out = any(pattern in page_text for pattern in sold_out_patterns)
-                    
-                    if is_sold_out:
-                        print(f"  ❌ SOLD OUT for {route['from']} → {route['to']}")
-                        continue  # Skip to next route, don't report as available
-                    
-                    # Only check for availability if NOT sold out
-                    # Look for actual bookable dates/times (train results)
-                    has_train_results = any(indicator in page_text for indicator in [
-                        "select",
-                        "book now",
-                        "available",
-                        "€",
-                        "£",
-                        "departing",
-                        "arriving"
-                    ])
-                    
-                    if has_train_results:
-                        availability_info = {
-                            "route": f"{route['from']} → {route['to']}",
-                        }
-                        results["available"].append(availability_info)
-                        print(f"  ✅ FOUND AVAILABILITY: {availability_info}")
-                    else:
-                        print(f"  ⚠️ Could not determine availability for {route['from']} → {route['to']}")
-                        
-                except Exception as e:
-                    error_msg = f"Error checking {route['from']} → {route['to']}: {str(e)}"
-                    results["errors"].append(error_msg)
-                    print(f"  {error_msg}")
+            # Get page text for analysis
+            page_text = page.inner_text("body").lower()
+            print(f"Page text sample: {page_text[:1000]}...")
+            
+            # Check for "sold out" / "no availability" messages
+            sold_out_patterns = [
+                "sold out",
+                "currently sold out", 
+                "no tickets available",
+                "no availability",
+                "no snap tickets",
+                "check back later",
+                "sorry this route is currently sold out"
+            ]
+            
+            is_sold_out = any(pattern in page_text for pattern in sold_out_patterns)
+            
+            # Check if London-Amsterdam route is mentioned/available
+            has_london = "london" in page_text
+            has_amsterdam = "amsterdam" in page_text
+            
+            print(f"Has London: {has_london}, Has Amsterdam: {has_amsterdam}")
+            print(f"Is sold out: {is_sold_out}")
+            
+            if is_sold_out:
+                print("❌ Route is SOLD OUT - no availability")
+            else:
+                # Check for positive availability indicators
+                availability_indicators = [
+                    "select your outbound",
+                    "select your return", 
+                    "choose your train",
+                    "book now",
+                    "add to basket",
+                    "from €",
+                    "from £"
+                ]
+                
+                has_availability = any(indicator in page_text for indicator in availability_indicators)
+                
+                if has_availability:
+                    results["available"].append({
+                        "route": "London ↔ Amsterdam",
+                    })
+                    print("✅ AVAILABILITY FOUND!")
+                else:
+                    print("⚠️ No clear availability indicators found (but not explicitly sold out)")
             
             # Take a screenshot for debugging
             page.screenshot(path="snap_screenshot.png")
