@@ -84,61 +84,74 @@ def scrape_snap_availability() -> dict:
                 try:
                     print(f"\nChecking route: {route['from']} → {route['to']}")
                     
-                    # Look for route selection or available dates on the page
-                    # The SNAP site typically shows a calendar or list of available dates
-                    
-                    # Try to find and click on origin selector
-                    origin_selector = page.locator(f"text={route['from']}").first
-                    if origin_selector.count() > 0:
-                        origin_selector.click()
+                    # Select origin station
+                    origin_input = page.locator("[data-testid='origin-input'], input[placeholder*='From'], input[aria-label*='From'], input[aria-label*='origin']").first
+                    if origin_input.count() > 0:
+                        origin_input.click()
+                        page.wait_for_timeout(500)
+                        origin_input.fill(route['from'])
                         page.wait_for_timeout(1000)
+                        # Click on dropdown option
+                        page.locator(f"text={route['from']}").first.click()
+                        page.wait_for_timeout(500)
                     
-                    # Try to find destination
-                    dest_selector = page.locator(f"text={route['to']}").first
-                    if dest_selector.count() > 0:
-                        dest_selector.click()
+                    # Select destination station
+                    dest_input = page.locator("[data-testid='destination-input'], input[placeholder*='To'], input[aria-label*='To'], input[aria-label*='destination']").first
+                    if dest_input.count() > 0:
+                        dest_input.click()
+                        page.wait_for_timeout(500)
+                        dest_input.fill(route['to'])
                         page.wait_for_timeout(1000)
+                        page.locator(f"text={route['to']}").first.click()
+                        page.wait_for_timeout(500)
                     
-                    # Look for available dates - these are typically highlighted or clickable
-                    # Common patterns: calendar cells, date buttons, availability indicators
-                    available_elements = page.locator(
-                        "[class*='available'], [class*='selectable'], "
-                        "[data-available='true'], .calendar-day:not(.disabled), "
-                        "[class*='date']:not([class*='unavailable']):not([class*='disabled'])"
-                    )
+                    # Click search button
+                    search_btn = page.locator("button:has-text('Search'), button[type='submit']").first
+                    if search_btn.count() > 0:
+                        search_btn.click()
+                        page.wait_for_timeout(3000)
                     
-                    # Also check for any text indicating availability
-                    page_content = page.content()
+                    # Get page text for analysis
+                    page_text = page.inner_text("body").lower()
+                    print(f"  Page text sample: {page_text[:500]}...")
                     
-                    # Look for date patterns in the page
-                    date_pattern = r'\b(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(\d{4})?\b'
-                    dates_found = re.findall(date_pattern, page_content, re.IGNORECASE)
-                    
-                    # Check for "no availability" messages
-                    no_availability_patterns = [
-                        "no tickets available",
+                    # Check for "sold out" / "no availability" messages - this is the PRIMARY check
+                    sold_out_patterns = [
                         "sold out",
+                        "currently sold out",
+                        "no tickets available",
                         "no availability",
                         "no snap tickets",
-                        "check back later"
+                        "check back later",
+                        "sorry this route is currently sold out"
                     ]
                     
-                    page_text = page.inner_text("body").lower()
-                    has_no_availability = any(pattern in page_text for pattern in no_availability_patterns)
+                    is_sold_out = any(pattern in page_text for pattern in sold_out_patterns)
                     
-                    if has_no_availability:
-                        print(f"  No availability found for {route['from']} → {route['to']}")
-                    elif available_elements.count() > 0 or dates_found:
-                        # Found potential availability
+                    if is_sold_out:
+                        print(f"  ❌ SOLD OUT for {route['from']} → {route['to']}")
+                        continue  # Skip to next route, don't report as available
+                    
+                    # Only check for availability if NOT sold out
+                    # Look for actual bookable dates/times (train results)
+                    has_train_results = any(indicator in page_text for indicator in [
+                        "select",
+                        "book now",
+                        "available",
+                        "€",
+                        "£",
+                        "departing",
+                        "arriving"
+                    ])
+                    
+                    if has_train_results:
                         availability_info = {
                             "route": f"{route['from']} → {route['to']}",
-                            "element_count": available_elements.count(),
-                            "dates_found": dates_found[:5] if dates_found else []
                         }
                         results["available"].append(availability_info)
-                        print(f"  FOUND AVAILABILITY: {availability_info}")
+                        print(f"  ✅ FOUND AVAILABILITY: {availability_info}")
                     else:
-                        print(f"  Could not determine availability for {route['from']} → {route['to']}")
+                        print(f"  ⚠️ Could not determine availability for {route['from']} → {route['to']}")
                         
                 except Exception as e:
                     error_msg = f"Error checking {route['from']} → {route['to']}: {str(e)}"
