@@ -55,7 +55,7 @@ def scrape_snap_availability() -> dict:
     Scrape Eurostar SNAP website for available dates.
     Returns dict with route info and available dates.
     """
-    results = {"available": [], "errors": []}
+    results = {"available": [], "sold_out": [], "errors": []}
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -148,10 +148,36 @@ def scrape_snap_availability() -> dict:
                 
                 if is_sold_out:
                     print(f"❌ {origin} → {destination}: SOLD OUT")
+                    results["sold_out"].append(f"{origin} → {destination}")
                 else:
+                    # Try to get available dates from the calendar
+                    available_dates = []
+                    try:
+                        # Click on date field to open calendar
+                        date_field = page.locator("[class*='date'], button:has-text('Dec'), button:has-text('Jan')").first
+                        date_field.click(timeout=5000)
+                        page.wait_for_timeout(1000)
+                        
+                        # Look for bold dates (available) in the calendar
+                        # Bold dates typically have font-weight: bold or a specific class
+                        bold_dates = page.locator("button[class*='bold'], [style*='font-weight: bold'], [style*='font-weight:bold'], [class*='available'], [class*='active']:not([class*='disabled'])")
+                        
+                        for i in range(bold_dates.count()):
+                            try:
+                                date_text = bold_dates.nth(i).inner_text()
+                                if date_text.strip().isdigit():
+                                    available_dates.append(date_text.strip())
+                            except:
+                                pass
+                        
+                        print(f"Found {len(available_dates)} available dates: {available_dates}")
+                    except Exception as e:
+                        print(f"Could not extract dates: {e}")
+                    
                     print(f"✅ {origin} → {destination}: AVAILABILITY FOUND!")
                     results["available"].append({
                         "route": f"{origin} → {destination}",
+                        "dates": available_dates if available_dates else ["dates available - check website"]
                     })
             
             # Save final screenshot
@@ -177,32 +203,47 @@ def main():
     
     results = scrape_snap_availability()
     
+    # Always send a message with the results (for testing)
+    message = "🚄 EUROSTAR SNAP STATUS\n"
+    message += "=" * 25 + "\n\n"
+    
+    # Report available routes
     if results["available"]:
-        # Build notification message
-        message = "🚄 EUROSTAR SNAP ALERT!\n\nAvailable tickets found:\n"
+        message += "✅ AVAILABLE:\n"
         for avail in results["available"]:
             message += f"\n• {avail['route']}"
-            if avail.get("dates_found"):
-                dates_str = ", ".join([f"{d[0]} {d[1]}" for d in avail["dates_found"][:3]])
+            if avail.get("dates"):
+                dates_str = ", ".join(avail["dates"][:10])  # Show up to 10 dates
                 message += f"\n  Dates: {dates_str}"
-        
-        message += f"\n\n🔗 Book now: {SNAP_URL}"
-        
-        print("\n" + "=" * 50)
-        print("AVAILABILITY FOUND!")
-        print(message)
-        print("=" * 50)
-        
-        send_whatsapp(message)
-    else:
-        print("\n" + "=" * 50)
-        print("No availability found at this time.")
-        print("=" * 50)
+        message += "\n\n"
     
+    # Report sold out routes
+    if results["sold_out"]:
+        message += "❌ SOLD OUT:\n"
+        for route in results["sold_out"]:
+            message += f"• {route}\n"
+        message += "\n"
+    
+    # If nothing found at all
+    if not results["available"] and not results["sold_out"]:
+        message += "⚠️ Could not determine availability\n\n"
+    
+    # Report errors if any
     if results["errors"]:
-        print("\nErrors encountered:")
+        message += "⚠️ Errors:\n"
         for error in results["errors"]:
-            print(f"  - {error}")
+            message += f"• {error}\n"
+        message += "\n"
+    
+    message += f"🔗 {SNAP_URL}"
+    
+    print("\n" + "=" * 50)
+    print("RESULTS:")
+    print(message)
+    print("=" * 50)
+    
+    # Always send WhatsApp for testing
+    send_whatsapp(message)
     
     return len(results["available"]) > 0
 
