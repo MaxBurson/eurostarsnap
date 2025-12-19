@@ -103,7 +103,7 @@ def scrape_snap_availability() -> dict:
                 
                 # Load the route-specific URL directly
                 page.goto(route_url, wait_until="networkidle", timeout=60000)
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(2000)
                 
                 # Accept cookies if they appear again
                 try:
@@ -114,112 +114,75 @@ def scrape_snap_availability() -> dict:
                 except:
                     pass
                 
-                # Click the Search button
-                print("Clicking Search button...")
-                try:
-                    search_btn = page.locator("button:has-text('Search')").first
-                    search_btn.click(timeout=10000)
-                    print("Search button clicked, waiting for results...")
-                    page.wait_for_timeout(5000)
-                except Exception as e:
-                    print(f"Could not click search button: {e}")
+                # Take initial screenshot
+                page.screenshot(path=f"snap_{origin.lower()}_{destination.lower()}_initial.png")
                 
-                # Take screenshot
-                screenshot_name = f"snap_{origin.lower()}_{destination.lower()}.png"
-                page.screenshot(path=screenshot_name)
-                print(f"Screenshot saved: {screenshot_name}")
-                
-                # Get page text AFTER search
+                # Get page text to check for "sold out" message (appears immediately without clicking search)
                 page_text = page.inner_text("body").lower()
-                print(f"Page text sample: {page_text[:500]}...")
+                print(f"Page text sample: {page_text[:300]}...")
                 
-                # Check for the specific "Sorry this route is currently sold out" message
-                # This appears when the ENTIRE route has no availability at all
+                # Check for the "Sorry this route is currently sold out" message
                 route_sold_out = "sorry this route is currently sold out" in page_text
                 
-                # If we see "train results" or date options, there IS availability on some dates
-                has_train_results = "train results" in page_text or "edit search" in page_text
+                print(f"Route sold out: {route_sold_out}")
                 
-                print(f"Route completely sold out: {route_sold_out}")
-                print(f"Has train results page: {has_train_results}")
-                
-                if route_sold_out and not has_train_results:
+                if route_sold_out:
                     print(f"❌ {origin} → {destination}: SOLD OUT")
                     results["sold_out"].append(f"{origin} → {destination}")
-                elif has_train_results:
-                    # Try to get available dates from the calendar
+                else:
+                    # Route has availability - click date button to open calendar and get available dates
                     available_dates = []
+                    print("Opening calendar to extract available dates...")
+                    
                     try:
-                        # Try multiple selectors to click the date field and open calendar
-                        date_selectors = [
-                            "text=Sat 20 Dec",
-                            "text=Dec",
-                            "[class*='date']",
-                            "button >> text=/\\d+ Dec/",
-                            "[aria-label*='date']",
-                        ]
+                        # Click on the date button (shows something like "Sat 20 Dec")
+                        date_btn = page.locator("button:has-text('Dec'), button:has-text('Jan')").first
+                        date_btn.click(timeout=5000)
+                        page.wait_for_timeout(1500)
                         
-                        calendar_opened = False
-                        for selector in date_selectors:
+                        # Take screenshot of calendar
+                        page.screenshot(path=f"calendar_{origin.lower()}_{destination.lower()}.png")
+                        print("Calendar opened, extracting dates...")
+                        
+                        # Get all buttons in the calendar
+                        all_buttons = page.locator("button").all()
+                        
+                        for btn in all_buttons:
                             try:
-                                date_field = page.locator(selector).first
-                                if date_field.count() > 0:
-                                    date_field.click(timeout=3000)
-                                    page.wait_for_timeout(1500)
-                                    # Check if calendar appeared
-                                    if page.locator("text=December 2025").count() > 0 or page.locator("text=January 2026").count() > 0:
-                                        calendar_opened = True
-                                        print(f"Calendar opened with selector: {selector}")
-                                        break
+                                text = btn.inner_text().strip()
+                                # Check if it's a day number (1-31)
+                                if text.isdigit() and 1 <= int(text) <= 31:
+                                    # Check if button is disabled (grey) or enabled (black/available)
+                                    is_disabled = btn.is_disabled()
+                                    classes = btn.get_attribute("class") or ""
+                                    aria_disabled = btn.get_attribute("aria-disabled")
+                                    
+                                    is_grey = (
+                                        is_disabled or
+                                        "disabled" in classes.lower() or
+                                        aria_disabled == "true"
+                                    )
+                                    
+                                    if not is_grey:
+                                        available_dates.append(int(text))
                             except:
-                                continue
+                                pass
                         
-                        if calendar_opened:
-                            # Take screenshot of calendar
-                            page.screenshot(path=f"calendar_{origin.lower()}_{destination.lower()}.png")
-                            
-                            # Get all buttons and check which are available
-                            all_buttons = page.locator("button").all()
-                            
-                            for btn in all_buttons:
-                                try:
-                                    text = btn.inner_text().strip()
-                                    if text.isdigit() and 1 <= int(text) <= 31:
-                                        # Check various disabled indicators
-                                        is_disabled = btn.is_disabled()
-                                        classes = btn.get_attribute("class") or ""
-                                        aria_disabled = btn.get_attribute("aria-disabled")
-                                        tabindex = btn.get_attribute("tabindex")
-                                        
-                                        is_grey = (
-                                            is_disabled or
-                                            "disabled" in classes.lower() or
-                                            "unavailable" in classes.lower() or
-                                            aria_disabled == "true" or
-                                            tabindex == "-1"
-                                        )
-                                        
-                                        if not is_grey:
-                                            available_dates.append(text)
-                                except:
-                                    pass
-                            
-                            # Remove duplicates and sort
-                            available_dates = sorted(list(set(available_dates)), key=lambda x: int(x))
-                        
-                        print(f"Found {len(available_dates)} available dates: {available_dates}")
+                        # Remove duplicates and sort
+                        available_dates = sorted(list(set(available_dates)))
+                        # Convert back to strings
+                        available_dates = [str(d) for d in available_dates]
                         
                     except Exception as e:
-                        print(f"Could not extract dates: {e}")
+                        print(f"Could not extract dates from calendar: {e}")
                     
+                    print(f"Found {len(available_dates)} available dates: {available_dates}")
                     print(f"✅ {origin} → {destination}: AVAILABILITY FOUND!")
+                    
                     results["available"].append({
                         "route": f"{origin} → {destination}",
-                        "dates": available_dates if available_dates else ["dates available - check website"]
+                        "dates": available_dates if available_dates else ["check website for dates"]
                     })
-                else:
-                    print(f"⚠️ {origin} → {destination}: Could not determine status")
-                    results["errors"].append(f"Could not determine status for {origin} → {destination}")
             
             # Save final screenshot
             page.screenshot(path="snap_screenshot.png")
