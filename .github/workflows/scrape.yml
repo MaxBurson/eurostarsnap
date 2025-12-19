@@ -2,9 +2,8 @@ name: Eurostar SNAP Scraper
 
 on:
   schedule:
-    # Run every 10 minutes
     - cron: '*/10 * * * *'
-  workflow_dispatch: # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   scrape:
