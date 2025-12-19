@@ -2,7 +2,7 @@
 """
 Eurostar SNAP Scraper
 Monitors for available tickets between London and Amsterdam.
-Sends WhatsApp notifications via Twilio when tickets are found.
+Sends WhatsApp notifications via Twilio when availability changes.
 """
 
 import os
