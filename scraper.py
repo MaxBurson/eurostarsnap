@@ -80,69 +80,83 @@ def scrape_snap_availability() -> dict:
             except:
                 pass
             
-            # Click the Search button to trigger the search
-            print("Clicking Search button...")
-            try:
-                search_btn = page.locator("button:has-text('Search')").first
-                search_btn.click(timeout=10000)
-                print("Search button clicked, waiting for results...")
-                page.wait_for_timeout(5000)  # Wait for results to load
-            except Exception as e:
-                print(f"Could not click search button: {e}")
-            
-            # Take screenshot after search
-            page.screenshot(path="snap_screenshot.png")
-            print("Screenshot saved to snap_screenshot.png")
-            
-            # Get page text for analysis AFTER search
-            page_text = page.inner_text("body").lower()
-            print(f"Page text after search: {page_text[:1500]}...")
-            
-            # Check for "sold out" / "no availability" messages
-            sold_out_patterns = [
-                "sold out",
-                "currently sold out", 
-                "no tickets available",
-                "no availability",
-                "no snap tickets",
-                "check back later",
-                "sorry this route is currently sold out"
-            ]
-            
-            is_sold_out = any(pattern in page_text for pattern in sold_out_patterns)
-            
-            print(f"Is sold out: {is_sold_out}")
-            
-            if is_sold_out:
-                print("❌ Route is SOLD OUT - no availability")
-            else:
-                # Check for positive availability indicators
-                availability_indicators = [
-                    "select your outbound",
-                    "select your return", 
-                    "choose your train",
-                    "book now",
-                    "add to basket",
-                    "from €",
-                    "from £",
-                    "morning",
-                    "afternoon",
-                    "evening"
-                ]
+            # Check both routes: London→Amsterdam and Amsterdam→London
+            for route in ROUTES:
+                origin = route["from"]
+                destination = route["to"]
+                print(f"\n{'='*40}")
+                print(f"Checking route: {origin} → {destination}")
+                print(f"{'='*40}")
                 
-                has_availability = any(indicator in page_text for indicator in availability_indicators)
+                # Reload page for each route to reset state
+                if route != ROUTES[0]:
+                    page.goto(SNAP_URL, wait_until="networkidle", timeout=60000)
+                    page.wait_for_timeout(2000)
                 
-                if has_availability:
-                    results["available"].append({
-                        "route": "London ↔ Amsterdam",
-                    })
-                    print("✅ AVAILABILITY FOUND!")
+                # Click on origin field and select station
+                try:
+                    # Click the origin input area
+                    origin_field = page.locator("input, [role='combobox']").first
+                    origin_field.click(timeout=5000)
+                    page.wait_for_timeout(500)
+                    
+                    # Type the origin
+                    page.keyboard.type(origin, delay=50)
+                    page.wait_for_timeout(1000)
+                    
+                    # Click on the dropdown option
+                    page.locator(f"text='{origin}'").first.click(timeout=5000)
+                    page.wait_for_timeout(500)
+                except Exception as e:
+                    print(f"Origin selection: {e}")
+                
+                # Click on destination field and select station
+                try:
+                    # The destination field should now be active or we click it
+                    page.keyboard.type(destination, delay=50)
+                    page.wait_for_timeout(1000)
+                    
+                    # Click on the dropdown option
+                    page.locator(f"text='{destination}'").first.click(timeout=5000)
+                    page.wait_for_timeout(500)
+                except Exception as e:
+                    print(f"Destination selection: {e}")
+                
+                # Click the Search button
+                print("Clicking Search button...")
+                try:
+                    search_btn = page.locator("button:has-text('Search')").first
+                    search_btn.click(timeout=10000)
+                    print("Search button clicked, waiting for results...")
+                    page.wait_for_timeout(3000)
+                except Exception as e:
+                    print(f"Could not click search button: {e}")
+                
+                # Take screenshot
+                screenshot_name = f"snap_{origin.lower()}_{destination.lower()}.png"
+                page.screenshot(path=screenshot_name)
+                print(f"Screenshot saved: {screenshot_name}")
+                
+                # Get page text AFTER search
+                page_text = page.inner_text("body").lower()
+                print(f"Page text sample: {page_text[:500]}...")
+                
+                # Simple check: if "sold out" appears, no availability. Otherwise, there IS availability!
+                is_sold_out = "sold out" in page_text or "sorry this route" in page_text
+                
+                print(f"Contains 'sold out': {is_sold_out}")
+                
+                if is_sold_out:
+                    print(f"❌ {origin} → {destination}: SOLD OUT")
                 else:
-                    print("⚠️ No clear availability indicators found (but not explicitly sold out)")
+                    print(f"✅ {origin} → {destination}: AVAILABILITY FOUND!")
+                    results["available"].append({
+                        "route": f"{origin} → {destination}",
+                    })
             
-            # Take a screenshot for debugging
+            # Save final screenshot
             page.screenshot(path="snap_screenshot.png")
-            print("\nScreenshot saved to snap_screenshot.png")
+            print("\nFinal screenshot saved to snap_screenshot.png")
             
         except PlaywrightTimeout as e:
             results["errors"].append(f"Page load timeout: {str(e)}")
