@@ -16,14 +16,14 @@ SNAP_URL = "https://snap.eurostar.com/uk-en"
 # Station codes: London=7015400, Amsterdam=8400058, Paris Gare du Nord=8727100
 ROUTES = [
     {
-        "from": "Paris", 
+        "from": "London", 
         "to": "Amsterdam",
-        "url": "https://snap.eurostar.com/uk-en?origin=8727100&destination=8400058"  # Paris Gare du Nord to Amsterdam
+        "url": "https://snap.eurostar.com/uk-en?origin=7015400&destination=8400058"  # London St Pancras to Amsterdam
     },
     {
         "from": "Amsterdam", 
-        "to": "Paris",
-        "url": "https://snap.eurostar.com/uk-en?origin=8400058&destination=8727100"  # Amsterdam to Paris Gare du Nord
+        "to": "London",
+        "url": "https://snap.eurostar.com/uk-en?origin=8400058&destination=7015400"  # Amsterdam to London St Pancras
     },
 ]
 
