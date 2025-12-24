@@ -2,13 +2,13 @@
 """
 Eurostar SNAP Scraper
 Monitors for available tickets between London and Amsterdam.
-Sends WhatsApp notifications via Twilio when availability changes.
+Sends Telegram notifications when availability changes.
 """
 
 import os
 import re
 import json
-from twilio.rest import Client
+import requests
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 # State file to track previous results
@@ -31,36 +31,36 @@ ROUTES = [
     },
 ]
 
-# Twilio settings from environment
-TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
-TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
-TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")  # Sandbox number
-YOUR_PHONE_NUMBER = os.environ.get("YOUR_PHONE_NUMBER", "")
+# Telegram settings from environment
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 
-def send_whatsapp(message: str) -> bool:
-    """Send WhatsApp message via Twilio API."""
-    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not YOUR_PHONE_NUMBER:
-        print("Twilio credentials not configured. Message:")
+def send_telegram(message: str) -> bool:
+    """Send Telegram message via Bot API."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("Telegram credentials not configured. Message:")
         print(message)
         return False
 
     try:
-        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        data = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+        response = requests.post(url, data=data)
+        result = response.json()
         
-        # Ensure phone numbers have whatsapp: prefix
-        to_number = YOUR_PHONE_NUMBER if YOUR_PHONE_NUMBER.startswith("whatsapp:") else f"whatsapp:{YOUR_PHONE_NUMBER}"
-        from_number = TWILIO_WHATSAPP_FROM if TWILIO_WHATSAPP_FROM.startswith("whatsapp:") else f"whatsapp:{TWILIO_WHATSAPP_FROM}"
-        
-        msg = client.messages.create(
-            body=message,
-            from_=from_number,
-            to=to_number
-        )
-        print(f"WhatsApp message sent successfully. SID: {msg.sid}")
-        return True
+        if result.get("ok"):
+            print(f"Telegram message sent successfully. Message ID: {result['result']['message_id']}")
+            return True
+        else:
+            print(f"Telegram API error: {result}")
+            return False
     except Exception as e:
-        print(f"Error sending WhatsApp: {e}")
+        print(f"Error sending Telegram: {e}")
         return False
 
 
@@ -356,7 +356,7 @@ def main():
         print(message)
         print("=" * 50)
         
-        send_whatsapp(message)
+        send_telegram(message)
     else:
         print("\n" + "=" * 50)
         print("No change detected - NOT sending notification")
