@@ -15,6 +15,8 @@ Add these secrets to your GitHub repo (Settings → Secrets and variables → Ac
 - `TWILIO_AUTH_TOKEN`: Your Twilio Auth Token
 - `TWILIO_WHATSAPP_FROM`: Sandbox number (e.g., `+14155238886`)
 - `YOUR_PHONE_NUMBER`: Your WhatsApp number (e.g., `+447123456789`)
+- `TELEGRAM_BOT_TOKEN`: Your Telegram Bot Token
+- `TELEGRAM_CHAT_ID`: Your Telegram Group Chat ID
 
 ### 3. Enable GitHub Actions
 The scraper runs automatically every 10 minutes via GitHub Actions.
@@ -28,9 +30,13 @@ export TWILIO_ACCOUNT_SID="your_sid"
 export TWILIO_AUTH_TOKEN="your_token"
 export TWILIO_WHATSAPP_FROM="+14155238886"
 export YOUR_PHONE_NUMBER="+447123456789"
+export TELEGRAM_BOT_TOKEN="your_bot_token"
+export TELEGRAM_CHAT_ID="your_group_chat_id"
 python scraper.py
 ```
 
 ## Routes Monitored
 - London St Pancras → Amsterdam Centraal
 - Amsterdam Centraal → London St Pancras
+- London St Pancras → Paris Gare du Nord
+- Paris Gare du Nord → London St Pancras

@@ -29,6 +29,16 @@ ROUTES = [
         "to": "London",
         "url": "https://snap.eurostar.com/uk-en?origin=8400058&destination=7015400"  # Amsterdam to London St Pancras
     },
+    {
+        "from": "London", 
+        "to": "Paris",
+        "url": "https://snap.eurostar.com/uk-en?origin=7015400&destination=8727100"  # London St Pancras to Paris Gare du Nord
+    },
+    {
+        "from": "Paris", 
+        "to": "London",
+        "url": "https://snap.eurostar.com/uk-en?origin=8727100&destination=7015400"  # Paris Gare du Nord to London St Pancras
+    },
 ]
 
 # Telegram settings from environment
