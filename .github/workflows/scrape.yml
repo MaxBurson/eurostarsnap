@@ -62,6 +62,8 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Stream poll output as it happens instead of buffering it for 25 min.
+          PYTHONUNBUFFERED: '1'
           # Keep checking within the run so detection latency is ~3 min instead
           # of however long GitHub takes to start the next scheduled run.
           POLL_DURATION_MINUTES: '25'
