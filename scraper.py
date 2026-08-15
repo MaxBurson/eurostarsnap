@@ -8,6 +8,7 @@ Sends Telegram notifications when availability changes.
 import os
 import re
 import json
+import time
 import requests
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
@@ -45,6 +46,12 @@ ROUTES = [
 # Telegram settings from environment
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+# Polling: GitHub only starts a scheduled run every ~25-30 min regardless of the
+# cron, so each run keeps polling internally to close the gap.
+# 0 minutes = single check (default for local runs).
+POLL_DURATION_MINUTES = int(os.environ.get("POLL_DURATION_MINUTES", "0"))
+POLL_INTERVAL_SECONDS = int(os.environ.get("POLL_INTERVAL_SECONDS", "180"))
 
 
 def send_telegram(message: str) -> bool:
@@ -152,21 +159,8 @@ def scrape_snap_availability() -> dict:
         page = context.new_page()
         
         try:
-            print(f"Loading SNAP page: {SNAP_URL}")
-            page.goto(SNAP_URL, wait_until="networkidle", timeout=60000)
-            
-            # Wait for the page to fully load
-            page.wait_for_timeout(3000)
-            
-            # Accept cookies if present
-            try:
-                cookie_btn = page.locator("button:has-text('Accept'), #onetrust-accept-btn-handler")
-                if cookie_btn.count() > 0:
-                    cookie_btn.first.click()
-                    page.wait_for_timeout(1000)
-            except:
-                pass
-            
+            # No separate homepage load - each route URL below loads the same page
+            # and handles the cookie banner itself.
             # Check both routes: London→Amsterdam and Amsterdam→London
             for route in ROUTES:
                 origin = route["from"]
@@ -323,11 +317,7 @@ def compare_states(previous: dict, current: dict) -> tuple[bool, str]:
     return True, "\n".join(changes)
 
 
-def main():
-    print("=" * 50)
-    print("Eurostar SNAP Availability Checker")
-    print("=" * 50)
-    
+def run_once():
     # Load previous state
     previous_state = load_previous_state()
     print(f"Previous state: {previous_state}")
@@ -388,6 +378,41 @@ def main():
         print("=" * 50)
     
     return has_changed
+
+
+def main():
+    print("=" * 50)
+    print("Eurostar SNAP Availability Checker")
+    print("=" * 50)
+
+    if POLL_DURATION_MINUTES <= 0:
+        return run_once()
+
+    deadline = time.monotonic() + POLL_DURATION_MINUTES * 60
+    print(f"Polling every {POLL_INTERVAL_SECONDS}s for {POLL_DURATION_MINUTES} min")
+
+    poll = 0
+    changed = False
+    while True:
+        poll += 1
+        print(f"\n{'#' * 50}")
+        print(f"# Poll {poll}")
+        print(f"{'#' * 50}")
+
+        # One bad poll (network blip, Playwright timeout) must not kill the run -
+        # the next poll a few minutes later usually succeeds.
+        try:
+            changed = run_once() or changed
+        except Exception as e:
+            print(f"⚠️ Poll {poll} failed: {type(e).__name__}: {e}")
+
+        remaining = deadline - time.monotonic()
+        if remaining <= POLL_INTERVAL_SECONDS:
+            print(f"\nPolling window finished after {poll} polls")
+            break
+        time.sleep(POLL_INTERVAL_SECONDS)
+
+    return changed
 
 
 if __name__ == "__main__":
