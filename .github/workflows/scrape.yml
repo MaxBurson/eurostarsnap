@@ -7,8 +7,8 @@ on:
     - cron: '3,13,23,33,43,53 * * * *'
   workflow_dispatch:
 
-# A run polls for ~25 min, so runs can overlap. Let the in-flight one finish
-# rather than cancelling it mid-poll and losing its state save.
+# Runs can overlap. Let the in-flight one finish rather than cancelling it
+# mid-poll and losing its state save.
 concurrency:
   group: snap-scraper
   cancel-in-progress: false
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-22.04
-    timeout-minutes: 40
+    timeout-minutes: 25
 
     steps:
       - name: Checkout repository
@@ -64,10 +64,11 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           # Stream poll output as it happens instead of buffering it for 25 min.
           PYTHONUNBUFFERED: '1'
-          # Keep checking within the run so detection latency is ~3 min instead
-          # of however long GitHub takes to start the next scheduled run.
-          POLL_DURATION_MINUTES: '25'
-          POLL_INTERVAL_SECONDS: '180'
+          # Poll a couple of times per run purely to bound the tail: GitHub can
+          # otherwise leave a ~55 min gap between scheduled runs. ~15 min
+          # detection is plenty for SNAP, so don't hold the runner longer.
+          POLL_DURATION_MINUTES: '20'
+          POLL_INTERVAL_SECONDS: '600'
         run: python scraper.py
 
       - name: Save current state
