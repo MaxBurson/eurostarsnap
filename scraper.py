@@ -25,20 +25,21 @@ ROUTES = [
         "url": "https://snap.eurostar.com/uk-en?origin=7015400&destination=8400058"  # London St Pancras to Amsterdam
     },
     {
-        "from": "Amsterdam", 
+        "from": "Amsterdam",
         "to": "London",
         "url": "https://snap.eurostar.com/uk-en?origin=8400058&destination=7015400"  # Amsterdam to London St Pancras
     },
-    {
-        "from": "London", 
-        "to": "Paris",
-        "url": "https://snap.eurostar.com/uk-en?origin=7015400&destination=8727100"  # London St Pancras to Paris Gare du Nord
-    },
-    {
-        "from": "Paris", 
-        "to": "London",
-        "url": "https://snap.eurostar.com/uk-en?origin=8727100&destination=7015400"  # Paris Gare du Nord to London St Pancras
-    },
+    # Paris routes disabled for now - only monitoring London <-> Amsterdam
+    # {
+    #     "from": "London",
+    #     "to": "Paris",
+    #     "url": "https://snap.eurostar.com/uk-en?origin=7015400&destination=8727100"  # London St Pancras to Paris Gare du Nord
+    # },
+    # {
+    #     "from": "Paris",
+    #     "to": "London",
+    #     "url": "https://snap.eurostar.com/uk-en?origin=8727100&destination=7015400"  # Paris Gare du Nord to London St Pancras
+    # },
 ]
 
 # Telegram settings from environment
@@ -72,6 +73,67 @@ def send_telegram(message: str) -> bool:
     except Exception as e:
         print(f"Error sending Telegram: {e}")
         return False
+
+
+MONTH_NAMES = (
+    "January|February|March|April|May|June|July|August|"
+    "September|October|November|December"
+)
+
+
+def extract_available_dates(page, origin: str, destination: str):
+    """
+    Open the date calendar and read which dates are bookable.
+
+    On the SNAP calendar each day is a [role='gridcell'] whose text is the day
+    number; unavailable days carry aria-disabled="true". A bookable day is a
+    gridcell with a numeric label that is NOT aria-disabled.
+
+    Returns:
+        - a list of date strings like ["25 Aug"] when the calendar opened
+          (empty list means the calendar opened but nothing is bookable), or
+        - the string "unknown" if the calendar could not be opened at all.
+    """
+    try:
+        # The outbound date button exposes aria-label "... open calendar".
+        cal_btn = page.locator("button[aria-label*='open calendar']").first
+        cal_btn.click(timeout=8000)
+        page.wait_for_timeout(2000)
+    except Exception as e:
+        print(f"Could not open calendar: {e}")
+        return "unknown"
+
+    page.screenshot(path=f"calendar_{origin.lower()}_{destination.lower()}.png")
+
+    # Work out which month the calendar is showing, e.g. "August 2026",
+    # so dates can be reported as "25 Aug" rather than a bare number.
+    month_abbr = ""
+    try:
+        for h in page.locator("h2").all():
+            text = h.inner_text().strip()
+            if re.match(rf"^({MONTH_NAMES})\s+\d{{4}}$", text):
+                month_abbr = text.split()[0][:3]
+                break
+    except Exception:
+        pass
+
+    available = []
+    for cell in page.locator("[role='gridcell']").all():
+        try:
+            text = cell.inner_text().strip()
+            if not text.isdigit():
+                continue
+            if cell.get_attribute("aria-disabled") == "true":
+                continue
+            available.append(int(text))
+        except Exception:
+            pass
+
+    # Dedupe, sort, and format with the month abbreviation.
+    days = sorted(set(available))
+    if month_abbr:
+        return [f"{d} {month_abbr}" for d in days]
+    return [str(d) for d in days]
 
 
 def scrape_snap_availability() -> dict:
@@ -142,80 +204,32 @@ def scrape_snap_availability() -> dict:
                 print(f"Route sold out: {route_sold_out}")
                 
                 if route_sold_out:
-                    print(f"❌ {origin} → {destination}: SOLD OUT")
+                    print(f"❌ {origin} → {destination}: SOLD OUT (sold-out message shown)")
                     results["sold_out"].append(f"{origin} → {destination}")
                 else:
-                    # Route has availability - click date button to open calendar and get available dates
-                    available_dates = []
+                    # No explicit sold-out message - open the calendar and let the
+                    # bookable dates be the source of truth.
                     print("Opening calendar to extract available dates...")
-                    
-                    try:
-                        # Click on the date button (shows something like "Sat 20 Dec")
-                        date_btn = page.locator("button:has-text('Dec'), button:has-text('Jan')").first
-                        date_btn.click(timeout=5000)
-                        page.wait_for_timeout(2000)
-                        
-                        # Take screenshot of calendar
-                        page.screenshot(path=f"calendar_{origin.lower()}_{destination.lower()}.png")
-                        print("Calendar opened, extracting dates...")
-                        
-                        # Get the calendar HTML to understand structure
-                        calendar_html = page.content()
-                        
-                        # Look for day cells/buttons - try multiple approaches
-                        # Approach 1: Look for elements that are just numbers
-                        day_elements = page.locator("button, td, div").all()
-                        
-                        checked_count = 0
-                        for elem in day_elements:
-                            try:
-                                text = elem.inner_text().strip()
-                                # Check if it's a day number (1-31)
-                                if text.isdigit() and 1 <= int(text) <= 31:
-                                    checked_count += 1
-                                    # Get element info for debugging
-                                    classes = elem.get_attribute("class") or ""
-                                    aria_disabled = elem.get_attribute("aria-disabled")
-                                    is_disabled = False
-                                    try:
-                                        is_disabled = elem.is_disabled()
-                                    except:
-                                        pass
-                                    
-                                    # Log first few for debugging
-                                    if checked_count <= 5:
-                                        print(f"  Day {text}: classes='{classes[:50]}', disabled={is_disabled}, aria-disabled={aria_disabled}")
-                                    
-                                    # Check if this date is available (not grey/disabled)
-                                    is_grey = (
-                                        is_disabled or
-                                        "disabled" in classes.lower() or
-                                        "unavailable" in classes.lower() or
-                                        aria_disabled == "true"
-                                    )
-                                    
-                                    if not is_grey:
-                                        available_dates.append(int(text))
-                            except:
-                                pass
-                        
-                        print(f"Checked {checked_count} day elements")
-                        
-                        # Remove duplicates and sort
-                        available_dates = sorted(list(set(available_dates)))
-                        # Convert back to strings
-                        available_dates = [str(d) for d in available_dates]
-                        
-                    except Exception as e:
-                        print(f"Could not extract dates from calendar: {e}")
-                    
-                    print(f"Found {len(available_dates)} available dates: {available_dates}")
-                    print(f"✅ {origin} → {destination}: AVAILABILITY FOUND!")
-                    
-                    results["available"].append({
-                        "route": f"{origin} → {destination}",
-                        "dates": available_dates if available_dates else ["check website for dates"]
-                    })
+                    available_dates = extract_available_dates(page, origin, destination)
+
+                    if available_dates == "unknown":
+                        # Calendar wouldn't open - don't miss a possible alert,
+                        # flag as available with a soft "check the site" note.
+                        print(f"⚠️ {origin} → {destination}: could not read calendar, flagging as available")
+                        results["available"].append({
+                            "route": f"{origin} → {destination}",
+                            "dates": ["check website for dates"]
+                        })
+                    elif available_dates:
+                        print(f"✅ {origin} → {destination}: AVAILABILITY FOUND! Dates: {available_dates}")
+                        results["available"].append({
+                            "route": f"{origin} → {destination}",
+                            "dates": available_dates
+                        })
+                    else:
+                        # Calendar opened but every date is disabled = nothing bookable.
+                        print(f"❌ {origin} → {destination}: SOLD OUT (no bookable dates in calendar)")
+                        results["sold_out"].append(f"{origin} → {destination}")
             
             # Save final screenshot
             page.screenshot(path="snap_screenshot.png")
